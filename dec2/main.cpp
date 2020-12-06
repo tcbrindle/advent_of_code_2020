@@ -20,22 +20,17 @@ constexpr auto parse_pw_list = [](char const* path)
 {
     std::ifstream infile(path);
 
-    std::vector<pw_entry> entries;
-    std::string line;
+    return aoc::lines(infile)
+        .map([](auto const& line) {
+            pw_entry entry;
+            char buf[32];
 
-    while(std::getline(infile, line)) {
-        pw_entry entry;
-        char buf[32];
-
-        std::sscanf(line.c_str(), "%d-%d %c: %32s",
+            std::sscanf(line.c_str(), "%d-%d %c: %32s",
                     &entry.lo, &entry.hi, &entry.c, buf);
-
-        entry.pw = buf;
-
-        entries.push_back(std::move(entry));
-    }
-
-    return entries;
+            entry.pw = buf;
+            return entry;
+        })
+        .to_vector();
 };
 
 }
