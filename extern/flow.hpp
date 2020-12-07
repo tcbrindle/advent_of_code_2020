@@ -120,15 +120,6 @@ private:
     F* f_;
 };
 
-template <typename F>
-constexpr auto fref(F& f) -> function_ref<F> { return function_ref{f}; }
-
-template <typename F>
-constexpr auto fref(function_ref<F> f) -> function_ref<F> { return f; }
-
-template <typename F>
-using fref_t = decltype(fref(std::declval<F&>()));
-
 }
 
 struct equal_to {
@@ -960,7 +951,6 @@ struct flow_base {
 
 private:
     constexpr auto derived() & -> Derived& { return static_cast<Derived&>(*this); }
-    constexpr auto derived() const& -> Derived const& { return static_cast<Derived const&>(*this); };
     constexpr auto consume() -> Derived&& { return static_cast<Derived&&>(*this); }
 
     friend constexpr auto to_flow(flow_base& self) -> Derived& { return static_cast<Derived&>(self); }
@@ -1071,6 +1061,17 @@ public:
     /// @returns The accumulated value of type `value_t<Flow>`
     template <typename Func>
     constexpr auto fold(Func func);
+
+    /// Performs a left fold using `func`, passing the first element of the
+    /// flow as the initial value of the accumulator.
+    ///
+    /// If the flow is empty, returns an empty `maybe`. Otherwise, returns a
+    /// `maybe` containing the accumulated result.
+    ///
+    /// @param func Callable with a signature compatible with `(value_t<Flow>, item_t<Flow>) -> value_t<Flow>`
+    /// @returns The accumulated value of the fold, wrapped in a `flow::maybe`
+    template <typename Func>
+    constexpr auto fold_first(Func func);
 
     /// Exhausts the flow, applying the given function to each element
     ///
@@ -2311,9 +2312,22 @@ struct fold_op {
     }
 };
 
+struct fold_first_op {
+    template <typename Flowable, typename Func>
+    constexpr auto operator()(Flowable&& flowable, Func func) const
+    {
+        static_assert(is_flowable<Flowable>,
+                      "First argument to flow::fold_first must be Flowable");
+        return flow::from(FLOW_FWD(flowable)).fold_first(std::move(func));
+    }
+
+};
+
 } // namespace detail
 
 inline constexpr auto fold = detail::fold_op{};
+
+inline constexpr auto fold_first = detail::fold_first_op{};
 
 template <typename Derived>
 template <typename Func, typename Init>
@@ -2344,6 +2358,20 @@ constexpr auto flow_base<Derived>::fold(Func func)
             "This flow's value type is not default constructible. "
             "Use the fold(function, initial_value) overload instead");
     return consume().fold(std::move(func), value_t<Derived>{});
+}
+
+template <typename Derived>
+template <typename Func>
+constexpr auto flow_base<Derived>::fold_first(Func func)
+{
+    using return_t = maybe<value_t<Derived>>;
+
+    auto val = derived().next();
+    if (!val) {
+        return return_t{};
+    }
+
+    return return_t{derived().fold(std::move(func), *std::move(val))};
 }
 
 }
@@ -2733,9 +2761,9 @@ struct filter_adaptor : flow_base<filter_adaptor<Flow, Pred>> {
     }
 
     template <typename F = Flow>
-    constexpr auto subflow() & -> filter_adaptor<subflow_t<F>, fref_t<Pred>>
+    constexpr auto subflow() & -> filter_adaptor<subflow_t<F>, function_ref<Pred>>
     {
-        return {flow_.subflow(), fref(pred_)};
+        return {flow_.subflow(), pred_};
     }
 
 private:
@@ -2954,9 +2982,9 @@ public:
         return {std::move(image).take(counter)};
     }
 
-    constexpr auto subflow() & -> group_by_adaptor<subflow_t<Flow>, fref_t<KeyFn>>
+    constexpr auto subflow() & -> group_by_adaptor<subflow_t<Flow>, function_ref<KeyFn>>
     {
-        return {flow_.subflow(), fref(key_fn_)};
+        return {flow_.subflow(), function_ref{key_fn_}};
     }
 };
 
@@ -3195,9 +3223,9 @@ struct map_adaptor : flow_base<map_adaptor<Flow, Func>> {
     }
 
     template <typename F = Flow>
-    constexpr auto subflow() & -> map_adaptor<subflow_t<F>, fref_t<Func>>
+    constexpr auto subflow() & -> map_adaptor<subflow_t<F>, function_ref<Func>>
     {
-        return {flow_.subflow(), fref(func_)};
+        return {flow_.subflow(), func_};
     }
 
     template <bool B = is_sized_flow<Flow>>
@@ -3454,11 +3482,8 @@ template <typename D>
 template <typename Cmp>
 constexpr auto flow_base<D>::min(Cmp cmp)
 {
-    // Yes, this is crazy. Sorrynotsorry.
-    return derived().next().map([this, &cmp] (auto&& init) {
-        return *derived().fold([&cmp](auto init, auto&& item) -> next_t<D> {
-            return invoke(cmp, item, *init) ? next_t<D>{FLOW_FWD(item)} : std::move(init);
-        }, next_t<D>(FLOW_FWD(init)));
+    return derived().fold_first([&cmp](auto min, auto&& item) {
+        return invoke(cmp, item, min) ? FLOW_FWD(item) : std::move(min);
     });
 }
 
@@ -3466,10 +3491,8 @@ template <typename D>
 template <typename Cmp>
 constexpr auto flow_base<D>::max(Cmp cmp)
 {
-    return derived().next().map([this, &cmp] (auto&& init) {
-      return *derived().fold([&cmp](auto init, auto&& item) -> next_t<D> {
-        return !invoke(cmp, item, *init) ? next_t<D>{FLOW_FWD(item)} : std::move(init);
-      }, next_t<D>(FLOW_FWD(init)));
+    return derived().fold_first([&cmp](auto max, auto&& item) {
+        return !invoke(cmp, item, max) ? FLOW_FWD(item) : std::move(max);
     });
 }
 
@@ -3669,7 +3692,7 @@ struct scan_adaptor : flow_base<scan_adaptor<Base, Func, Init>> {
 
 private:
     Base base_;
-    Func func_;
+    FLOW_NO_UNIQUE_ADDRESS Func func_;
     Init state_;
 };
 
@@ -3714,7 +3737,7 @@ private:
     bool first_ = true;
     bool done_ = false;
 
-    using item_type = decltype(prev_.subflow().take(win_));
+    using item_type = decltype(flow_.subflow().take(win_));
 
     constexpr auto do_next_partial() -> maybe<item_type>
     {
@@ -3729,7 +3752,7 @@ private:
         auto sub = flow_.subflow();
 
         if (flow_.next()) {
-        //    return std::move(sub).take(win_);
+            return std::move(sub).take(win_);
         } else {
             done_ = true;
             return {};
@@ -4784,7 +4807,7 @@ struct async : flow_base<async<T>>
             return std::experimental::suspend_always{};
         };
 
-        auto final_suspend() {
+        auto final_suspend() noexcept {
             return std::experimental::suspend_always{};
         }
 
