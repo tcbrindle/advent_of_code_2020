@@ -1,19 +1,27 @@
 
 #include "../common.hpp"
-#include <set>
 
-constexpr auto str_to_set = [](auto&& str)
+constexpr auto sort = [](auto cont)
 {
-    return std::set(str.begin(), str.end());
+    std::sort(cont.begin(), cont.end());
+    return cont;
 };
 
-constexpr auto set_intersect =
-[]<typename T>(std::set<T> const& set1, std::set<T> const& set2)
+constexpr auto set_union = [](auto set1, auto set2)
 {
-    std::set<T> out;
+    decltype(set1) out;
+    std::set_union(set1.begin(), set1.end(),
+                   set2.begin(), set2.end(),
+                   std::inserter(out, out.end()));
+    return out;
+};
+
+constexpr auto set_intersect = [](auto set1, auto set2)
+{
+    decltype(set1) out;
     std::set_intersection(set1.begin(), set1.end(),
                           set2.begin(), set2.end(),
-                          std::inserter(out, out.begin()));
+                          std::inserter(out, out.end()));
     return out;
 };
 
@@ -21,8 +29,9 @@ constexpr auto part1 = [](auto&& input) {
     return flow::split(FLOW_FWD(input), "")
         .map([](auto lines) {
             return std::move(lines)
-                .flatten()
-                .template to<std::set>()
+                .map(sort)
+                .fold_first(set_union)
+                .value()
                 .size(); })
         .sum();
 };
@@ -31,9 +40,9 @@ constexpr auto part2 = [](auto&& input) {
     return flow::split(FLOW_FWD(input), "")
         .map([](auto lines) {
             return std::move(lines)
-                .map(str_to_set)
-                .fold(set_intersect,
-                      lines.next().map(str_to_set).value())
+                .map(sort)
+                .fold_first(set_intersect)
+                .value()
                 .size(); })
         .sum();
 };
@@ -70,6 +79,5 @@ int main(int argc, char** argv)
 
     fmt::print("Part 1: sum of counts was {}\n", part1(input));
 
-    fmt::print("Part 1: sum of counts was {}\n", part2(input));
-
+    fmt::print("Part 2: sum of counts was {}\n", part2(input));
 }
