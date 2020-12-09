@@ -1,8 +1,6 @@
 
 #include "../common.hpp"
 
-#include <set>
-
 enum class opcode {
     nop, acc, jmp
 };
@@ -25,15 +23,15 @@ const auto run_program = [](const auto& program) -> result
 {
     int acc = 0;
     size_t iptr = 0;
-    std::set<size_t> seen;
+    std::vector<bool> seen(program.size(), false);
 
     while (iptr < program.size()) {
-        if (seen.contains(iptr)) {
+        if (seen[iptr]) {
             return {acc, exit_status::loop};
         }
 
         auto& inst = program[iptr];
-        seen.insert(iptr);
+        seen[iptr] = true;
 
         switch (inst.op) {
         case opcode::nop:
@@ -69,12 +67,17 @@ const auto part1 = [](const auto& input)
 
 const auto part2 = [](const auto& input)
 {
+    // This is a bit "impure", but it saves us having to take a copy
+    // each time we go through the loop, or adding special "if swapped"
+    // logic to the executor
+    auto cache = input;
+
     return flow::ints(0, input.size())
-        .filter([&](auto idx) { return input[idx].op != opcode::acc; })
-        .map([&](auto idx) {
-            auto copy = input;
-            copy[idx].op = swap_opcodes(copy[idx].op);
-            auto res = run_program(copy);
+        .filter([&input](auto idx) { return input[idx].op != opcode::acc; })
+        .map([&cache](auto idx) {
+            cache[idx].op = swap_opcodes(cache[idx].op);
+            auto res = run_program(cache);
+            cache[idx].op = swap_opcodes(cache[idx].op);
             return res;
         })
         .filter([](auto res) { return res.status == exit_status::success; })
