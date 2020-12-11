@@ -4322,14 +4322,6 @@ namespace flow {
 
 namespace detail {
 
-struct unreachable_bound {
-    template <typename T>
-    friend constexpr bool operator<(const T&, const unreachable_bound&)
-    {
-        return true;
-    }
-};
-
 inline constexpr auto pre_inc = [] (auto& val)
     -> decltype(val++) { return val++; };
 
@@ -4346,12 +4338,27 @@ inline constexpr auto stepped_iota_size_fn =
     return (bound - val)/step + ((bound - val) % step != 0);
 };
 
+template <typename Val>
+struct iota_flow : flow_base<iota_flow<Val>> {
+    static constexpr bool is_infinite = true;
+
+    constexpr iota_flow(Val&& val)
+        : val_(std::move(val))
+    {}
+
+    constexpr auto next() -> maybe<Val>
+    {
+        return {val_++};
+    }
+
+private:
+    Val val_;
+};
+
 template <typename Val, typename Bound>
-struct iota_flow : flow_base<iota_flow<Val, Bound>> {
+struct bounded_iota_flow : flow_base<bounded_iota_flow<Val, Bound>> {
 
-    static constexpr bool is_infinite = std::is_same_v<Bound, unreachable_bound>;
-
-    constexpr iota_flow(Val&& val, Bound&& bound)
+    constexpr bounded_iota_flow(Val&& val, Bound&& bound)
         : val_(std::move(val)),
           bound_(std::move(bound))
     {}
@@ -4360,6 +4367,15 @@ struct iota_flow : flow_base<iota_flow<Val, Bound>> {
     {
         if (val_ < bound_) {
             return {val_++};
+        }
+        return {};
+    }
+
+    template <bool B = std::is_same_v<Val, Bound>>
+    constexpr auto next_back() -> std::enable_if_t<B, maybe<Val>>
+    {
+        if (val_ < bound_) {
+            return {--bound_};
         }
         return {};
     }
@@ -4428,7 +4444,7 @@ struct iota_fn {
     {
         static_assert(std::is_invocable_v<decltype(pre_inc), Val&>,
                       "Type passed to flow::iota() must have a pre-increment operator++(int)");
-        return iota_flow<Val, unreachable_bound>(std::move(from), unreachable_bound{});
+        return iota_flow<Val>(std::move(from));
     }
 
     template <typename Val, typename Bound>
@@ -4436,7 +4452,7 @@ struct iota_fn {
     {
         static_assert(std::is_invocable_v<decltype(pre_inc), Val&>,
                       "Type passed to flow::iota() must have a pre-increment operator++(int)");
-        return iota_flow<Val, Bound>(std::move(from), std::move(upto));
+        return bounded_iota_flow<Val, Bound>(std::move(from), std::move(upto));
     }
 
     template <typename Val, typename Bound, typename Step>
