@@ -1,114 +1,63 @@
 
 #include "../common.hpp"
 
-struct vec2 {
-    int x, y;
+#include <complex>
 
-    constexpr vec2& operator+=(vec2 o) { x += o.x; y += o.y; return *this; }
+using icomplex = std::complex<int>;
 
-    friend constexpr vec2 operator+(vec2 lhs, vec2 rhs) { return lhs += rhs; }
-
-    friend constexpr vec2 operator*(int k, vec2 v) { return {k * v.x, k * v.y}; }
-};
-
-const auto rotatel = [](vec2 v, int deg) -> vec2
-{
-    // This might be taking "No Raw Loops" a little too far...
-    return flow::ints(0, deg, 90).fold([](vec2 v, int /*unused*/) {
-        return vec2{-v.y, v.x};
-    }, v);
-};
-
-const auto rotater = [](vec2 v, int deg)
-{
-    return flow::ints(0, deg, 90).fold([](vec2 v, int /*unused*/) {
-       return vec2{v.y, -v.x};
-    }, v);
-};
+constexpr auto rotate_table = std::array<icomplex, 4>{{
+    {1, 0}, {0, 1}, {-1, 0}, {0, -1}
+}};
 
 struct ferry {
-    vec2 pos;
-    vec2 heading;
-};
-
-const auto process_instruction_pt1 = [](ferry f, const auto& pair) -> ferry
-{
-    const auto [c, arg] = pair;
-
-    switch (c) {
-    case 'N':
-        f.pos.y += arg;
-        break;
-    case 'S':
-        f.pos.y -= arg;
-        break;
-    case 'E':
-        f.pos.x += arg;
-        break;
-    case 'W':
-        f.pos.x -= arg;
-        break;
-    case 'L':
-        f.heading = rotatel(f.heading, arg);
-        break;
-    case 'R':
-        f.heading = rotater(f.heading, arg);
-        break;
-    case 'F':
-        f.pos += arg * f.heading;
-        break;
-    default:
-        throw std::runtime_error(fmt::format("Unknown instruction {} {}", c, arg));
-    }
-
-    return f;
+    icomplex pos;
+    icomplex heading;
 };
 
 const auto part1 = [](auto const& input) -> int
 {
-    ferry const f = flow::fold(input, process_instruction_pt1,
-                               ferry{.pos = {}, .heading= {1, 0}});
-    return std::abs(f.pos.x) + std::abs(f.pos.y);
-};
+    const ferry f = flow::fold(input, [](ferry f, const auto& pair) {
+        const auto [c, arg] = pair;
 
-const auto process_instruction_pt2 = [](ferry f, const auto& pair) -> ferry
-{
-    const auto [c, arg] = pair;
+        switch (c) {
+        case 'N': f.pos += icomplex{0, arg}; break;
+        case 'S': f.pos -= icomplex{0, arg}; break;
+        case 'E': f.pos += icomplex{arg, 0}; break;
+        case 'W': f.pos -= icomplex{arg, 0}; break;
+        case 'L': f.heading *= rotate_table.at(arg/90); break;
+        case 'R': f.heading *= rotate_table.at(4 - arg/90); break;
+        case 'F': f.pos += arg * f.heading; break;
+        default:
+            throw std::runtime_error(fmt::format("Unknown instruction {} {}", c, arg));
+        }
 
-    switch (c) {
-    case 'N':
-        f.heading.y += arg;
-        break;
-    case 'S':
-        f.heading.y -= arg;
-        break;
-    case 'E':
-        f.heading.x += arg;
-        break;
-    case 'W':
-        f.heading.x -= arg;
-        break;
-    case 'L':
-        f.heading = rotatel(f.heading, arg);
-        break;
-    case 'R':
-        f.heading = rotater(f.heading, arg);
-        break;
-    case 'F':
-        f.pos += arg * f.heading;
-        break;
-    default:
-        throw std::runtime_error(fmt::format("Unknown instruction {} {}", c, arg));
-    }
-    return f;
+        return f;
+    }, ferry{.heading= {1, 0}});
+
+    return std::abs(f.pos.real()) + std::abs(f.pos.imag());
 };
 
 const auto part2 = [](auto const& input) -> int
 {
-    const ferry f = flow::fold(input, process_instruction_pt2,
-                               ferry{.pos = {}, .heading = {10, 1}});
+    const ferry f = flow::fold(input, [](ferry f, const auto& pair) {
+        const auto [c, arg] = pair;
 
-    return std::abs(f.pos.x) + std::abs(f.pos.y);
+        switch (c) {
+        case 'N': f.heading += icomplex{0, arg}; break;
+        case 'S': f.heading -= icomplex{0, arg}; break;
+        case 'E': f.heading += icomplex{arg, 0}; break;
+        case 'W': f.heading -= icomplex{arg, 0}; break;
+        case 'L': f.heading *= rotate_table.at(arg/90); break;
+        case 'R': f.heading *= rotate_table.at(4 - arg/90); break;
+        case 'F': f.pos += arg * f.heading; break;
+        default:
+            throw std::runtime_error(fmt::format("Unknown instruction {} {}", c, arg));
+        }
+
+        return f;
+    }, ferry{.heading = {10, 1}});
+
+    return std::abs(f.pos.real()) + std::abs(f.pos.imag());
 };
 
 const auto parse_input = [](auto&& istream)
