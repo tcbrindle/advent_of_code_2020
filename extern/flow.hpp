@@ -1322,6 +1322,23 @@ public:
     template <typename Pred>
     constexpr auto filter(Pred pred) &&;
 
+    /// Given a flow of "optional-like" types (flow::maybe, std::optional,
+    /// raw pointers etc) returns a new flow which skips those items which
+    /// evaluate to false when converted to bool, and applies operator* to
+    /// the remainder.
+    ///
+    /// This is a (slightly) safer alternative to `deref()`, equivalent to
+    ///
+    ///  filter([](auto const& i) { return static_cast<bool>(i); }).deref()
+    ///
+    /// @return A new filter_deref adaptor
+    constexpr auto filter_deref() &&
+    {
+        return consume()
+                    .filter([](const auto& i) { return static_cast<bool>(i); })
+                    .deref();
+    }
+
     /// Consumes the flow, returning a new flow which skips the first `count` items.
     ///
     /// @param count The number of items to skip
