@@ -16,7 +16,7 @@ const auto part1 = [](auto const& pair)
     auto const& [target, ids] = pair;
 
     return flow::from(ids)
-            .filter_deref()
+            .deref()
             .map([t = target](int id) { return std::pair(id, id - t % id); })
             .min([](auto p1, auto p2) { return p1.second < p2.second; })
             .map([](auto p) { return p.first * p.second; })
@@ -52,15 +52,13 @@ const auto part2 = [](auto const& input) -> int64_t
 {
     // Do a first pass through the input to find the product of all
     // the (valid) items
-    const int64_t product = flow::from(input)
-                              .filter_deref()
-                              .product();
+    const int64_t product = flow::deref(input).product();
 
     // Calculate the result using the Chinese Remainder Theorem
     auto result = flow::enumerate(input)
-                    .filter([](auto p) { return (bool) p.first; })
+                    .filter([](auto p) { return (bool) p.second; })
                     .map([&] (auto p) {
-                        const auto [n, idx] = p;
+                        const auto [idx, n] = p;
                         const auto y = product/(*n);
                         return -idx * y * mod_inverse(y, *n);
                     })

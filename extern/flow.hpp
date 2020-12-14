@@ -1274,11 +1274,11 @@ public:
     /// `map([](auto&& item) -> decltype(auto) { return *forward(item); })`
     ///
     /// @warning This function **does not** check whether the items are
-    /// non-null (or equivalent) before dereferencing. See `filter_deref()` for
+    /// non-null (or equivalent) before dereferencing. See `deref()` for
     /// a safer, checking version.
     ///
     /// @return An adaptor that dereferences each item of the original flow
-    constexpr auto deref() &&;
+    constexpr auto unchecked_deref() &&;
 
     /// Consumes the flow, returning an adaptor which copies every item.
     ///
@@ -1322,22 +1322,23 @@ public:
     template <typename Pred>
     constexpr auto filter(Pred pred) &&;
 
-    /// Given a flow of "optional-like" types (flow::maybe, std::optional,
-    /// raw pointers etc) returns a new flow which skips those items which
-    /// evaluate to false when converted to bool, and applies operator* to
-    /// the remainder.
+    /// Consumes the flow, returning an adaptor which dereferences each item
+    /// using unary `operator*`.
     ///
-    /// This is a (slightly) safer alternative to `deref()`, equivalent to
+    /// This is useful when you have a flow of a dereferenceable type (for
+    /// example a pointer, a `flow::maybe` or a `std::optional`), and want a
+    /// flow of (references to) the values they contain.
     ///
-    ///  filter([](auto const& i) { return static_cast<bool>(i); }).deref()
+    /// Unlike `unchecked_deref()`, this adaptor first attempts to check whether
+    /// item contains a value, using a static_cast to bool. If the check returns
+    /// false, the item is skipped.
     ///
-    /// @return A new filter_deref adaptor
-    constexpr auto filter_deref() &&
-    {
-        return consume()
-                    .filter([](const auto& i) { return static_cast<bool>(i); })
-                    .deref();
-    }
+    /// Equivalent to:
+    ///
+    /// `filter([](const auto& i) { return static_cast<bool>(i); }.unchecked_deref()`
+    ///
+    /// @return An adaptor that dereferences each item of the original flow
+    constexpr auto deref() &&;
 
     /// Consumes the flow, returning a new flow which skips the first `count` items.
     ///
@@ -1467,9 +1468,9 @@ public:
     template <typename... Flowables>
     constexpr auto zip(Flowables&&... flowables) &&;
 
-    /// Adapts the flow so that it returns (item, index) pairs.
+    /// Adapts the flow so that it returns (index, item) pairs.
     ///
-    /// Equivalent to zip(flow::ints());
+    /// Equivalent to flow::ints().zip(*this)
     ///
     /// @return A new enumerate adaptor
     constexpr auto enumerate() &&;
@@ -2535,6 +2536,37 @@ constexpr auto flow_base<D>::cycle() &&
 #endif
 
 
+#ifndef FLOW_OP_DEREF_HPP_INCLUDED
+#define FLOW_OP_DEREF_HPP_INCLUDED
+
+
+
+namespace flow {
+
+inline constexpr auto deref = [](auto&& flowable)
+{
+    static_assert(is_flowable<decltype(flowable)>,
+                  "Argument to flow::deref must be a flowable type");
+    return FLOW_COPY(flow::from(FLOW_FWD(flowable))).deref();
+};
+
+template <typename D>
+constexpr auto flow_base<D>::deref() &&
+{
+    const auto bool_check = [](const auto& i) -> decltype(static_cast<bool>(i)) {
+        return static_cast<bool>(i);
+    };
+
+    static_assert(std::is_invocable_v<decltype(bool_check), item_t<D>>,
+                  "Flow's item type is not explicitly convertible to bool");
+
+    return consume().filter(bool_check).unchecked_deref();
+}
+
+}
+
+#endif
+
 #ifndef FLOW_OP_DROP_HPP_INCLUDED
 #define FLOW_OP_DROP_HPP_INCLUDED
 
@@ -3327,16 +3359,16 @@ constexpr auto flow_base<D>::as() &&
     });
 }
 
-// deref()
+// unchecked_deref()
 
-inline constexpr auto deref = [](auto&& flowable) {
+inline constexpr auto unchecked_deref = [](auto&& flowable) {
     static_assert(is_flowable<decltype(flowable)>,
-                  "Argument to flow::deref() must be a Flowable type");
-    return FLOW_COPY(flow::from(FLOW_FWD(flowable))).deref();
+                  "Argument to flow::unchecked_deref() must be a Flowable type");
+    return FLOW_COPY(flow::from(FLOW_FWD(flowable))).unchecked_deref();
 };
 
 template <typename D>
-constexpr auto flow_base<D>::deref() &&
+constexpr auto flow_base<D>::unchecked_deref() &&
 {
     auto deref = [](auto&& val) -> decltype(*FLOW_FWD(val)) {
         return *FLOW_FWD(val);
@@ -4563,7 +4595,7 @@ constexpr auto flow_base<D>::zip(Flowables&&... flowables) &&
 template <typename D>
 constexpr auto flow_base<D>::enumerate() &&
 {
-    return consume().zip(flow::ints());
+    return flow::ints().zip(consume());
 }
 
 }
