@@ -20,6 +20,7 @@
 
 #define FMT_HEADER_ONLY
 #include "extern/fmt/format.h"
+#include "extern/fmt/chrono.h"
 
 namespace aoc {
 
@@ -113,6 +114,20 @@ const auto try_parse = [](auto&& f) -> flow::optional<I> {
                     return 10 * acc.value_or(0) + (c - '0');
              }, flow::optional<I>{first})
              .map([mult](I i) { return i * mult; });
+};
+
+struct timer {
+    using clock = std::chrono::high_resolution_clock;
+
+    template <typename D = std::chrono::microseconds>
+    auto elapsed() const -> D {
+        return std::chrono::duration_cast<D>(clock::now() - start_);
+    }
+
+    void reset() { start_ = clock::now(); }
+
+private:
+    typename clock::time_point start_ = clock::now();
 };
 
 } // namespace aoc
