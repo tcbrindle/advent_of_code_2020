@@ -31,6 +31,12 @@ std::vector<T> vector_from_file(const char* path)
     return flow::from_istream<T>(str).to_vector();
 }
 
+std::string string_from_file(const char* path)
+{
+    std::ifstream str(path);
+    return flow::from_istreambuf(str).to_string();
+}
+
 namespace detail {
 
 template <typename CharT, typename Traits>
@@ -74,7 +80,7 @@ lines(std::basic_istream<CharT, Traits>& is, CharT delim = CharT{'\n'})
 // So, we're gonna roll our own
 // No, I'm not going to try and do this for floating point...
 template <typename I>
-const auto try_parse = [](auto&& f) -> flow::optional<I> {
+const auto try_parse = [](auto&& f) -> flow::maybe<I> {
 
     static_assert(std::is_integral_v<I>);
     static_assert(std::is_same_v<flow::flow_value_t<decltype(f)>, char>);
@@ -110,9 +116,9 @@ const auto try_parse = [](auto&& f) -> flow::optional<I> {
     // Deal with the rest
     return std::move(f2)
              .take_while(is_digit)
-             .fold([](auto acc, char c) -> flow::optional<I> {
+             .fold([](auto acc, char c) -> flow::maybe<I> {
                     return 10 * acc.value_or(0) + (c - '0');
-             }, flow::optional<I>{first})
+             }, flow::maybe<I>{first})
              .map([mult](I i) { return i * mult; });
 };
 
@@ -128,6 +134,42 @@ struct timer {
 
 private:
     typename clock::time_point start_ = clock::now();
+};
+
+namespace detail {
+
+struct split_string_flow : flow::flow_base<split_string_flow>
+{
+    constexpr split_string_flow(std::string_view str, std::string_view pattern)
+        : str_(str),
+          pattern_(pattern)
+    {}
+
+    constexpr auto next() -> flow::maybe<std::string_view>
+    {
+        if (str_.empty()) {
+            return {};
+        }
+
+        auto idx = str_.find(pattern_);
+        auto sub = str_.substr(0, idx);
+
+        str_.remove_prefix(idx == str_.npos ? str_.size() : idx + pattern_.size());
+
+        return sub;
+    }
+
+private:
+    std::string_view str_;
+    std::string_view pattern_;
+};
+
+}
+
+constexpr auto split_string = [](std::string_view str,
+                                 std::string_view pattern)
+{
+    return detail::split_string_flow(str, pattern);
 };
 
 } // namespace aoc

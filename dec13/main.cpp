@@ -82,19 +82,19 @@ int main(int argc, char** argv)
 
         // Additional tests for part2
         // (Are there any systems on which int64_t is not long long?)
-        constexpr flow::optional<long long> ex1[] = {17LL, {}, 13LL, 19LL};
+        constexpr flow::maybe<long long> ex1[] = {17LL, {}, 13LL, 19LL};
         static_assert(part2(ex1) == 3417);
 
-        constexpr flow::optional<long long> ex2[] = {67LL, 7LL, 59LL, 61LL};
+        constexpr flow::maybe<long long> ex2[] = {67LL, 7LL, 59LL, 61LL};
         static_assert(part2(ex2) == 754018);
 
-        constexpr flow::optional<long long> ex3[] = {67LL, {}, 7LL, 59LL, 61LL};
+        constexpr flow::maybe<long long> ex3[] = {67LL, {}, 7LL, 59LL, 61LL};
         static_assert(part2(ex3) == 779210);
 
-        constexpr flow::optional<long long> ex4[] = {67LL, 7LL, {}, 59LL, 61LL};
+        constexpr flow::maybe<long long> ex4[] = {67LL, 7LL, {}, 59LL, 61LL};
         static_assert(part2(ex4) == 1261476);
 
-        constexpr flow::optional<long long> ex5[] = {1789LL, 37LL, 47LL, 1889LL};
+        constexpr flow::maybe<long long> ex5[] = {1789LL, 37LL, 47LL, 1889LL};
         static_assert(part2(ex5) == 1202161486);
     }
 
